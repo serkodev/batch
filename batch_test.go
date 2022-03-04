@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -26,38 +27,37 @@ func TestSync(t *testing.T) {
 	t.Parallel()
 
 	db, fn := setupTestData(0, 2)
-	a, _ := New(fn, 10*time.Second, 1).Run()
+	a, _ := New(fn, 10*time.Nanosecond, 1).Run()
 
 	// test sync query
-	assertEqual(t, a.QueryValue("key1"), "val1")
-	assertEqual(t, a.QueryValue("key2"), "val2")
-	assertEqual(t, a.Query("key3").Error == NoResult, true)
+	assertEqual(t, a.WaitTaskValue("key1"), "val1")
+	assertEqual(t, a.WaitTaskValue("key2"), "val2")
+	assertEqual(t, a.WaitTask("key3").IsNoResult(), true)
 
 	// insert data
 	db.Store("key3", "val3")
-	assertEqual(t, a.QueryValue("key3"), "val3")
+	assertEqual(t, a.WaitTaskValue("key3"), "val3")
 
-	// Query
-	assertEqual(t, a.Query("key1"), Result[string]{
-		Value: "val1",
-	})
+	// GetChan
+	{
+		task := a.WaitTask("key1")
+		task.Wait()
+		assertEqual(t, task.ResultValue(), "val1")
+	}
 
-	// QueryChan
-	assertEqual(t, <-a.QueryChan("key1"), Result[string]{Value: "val1"})
-
-	// QueryResult
-	result, err := a.QueryResult("key1")
+	// GetResult
+	result, err := a.WaitTaskResult("key1")
 	assertEqual(t, result, "val1")
 	assertEqual(t, err == nil, true)
 
-	// QueryMulti
-	results := a.QueryMulti([]string{"key1", "key2"})
+	// GetMulti
+	results := a.WaitMultiTask([]string{"key1", "key2"})
 	for i, result := range results { // avoid using reflect.DeepEqual with errors
 		switch i {
 		case 0:
-			assertEqual(t, result.Value, "val1")
+			assertEqual(t, result.ResultValue(), "val1")
 		case 1:
-			assertEqual(t, result.Value, "val2")
+			assertEqual(t, result.ResultValue(), "val2")
 		}
 	}
 }
@@ -67,13 +67,15 @@ func TestAsync(t *testing.T) {
 
 	max := 3
 	_, fn := setupTestData(0, max)
-	a, _ := New(func(ids []Task[string, string]) error {
+	a, _ := New(func(ids []Task[string, string]) {
 		var keys []string
 		for _, t := range ids {
 			keys = append(keys, t.Value())
 		}
-		assertEqual(t, reflect.DeepEqual(ids, []string{"key1", "key2", "key3"}), true)
-		return fn(ids)
+		sort.Strings(keys)
+		assertEqual(t, reflect.DeepEqual(keys, []string{"key1", "key2", "key3"}), true)
+
+		fn(ids)
 	}, 100*time.Millisecond, 100).Run()
 
 	var w sync.WaitGroup
@@ -81,7 +83,7 @@ func TestAsync(t *testing.T) {
 	for i := 1; i <= max; i++ {
 		go func(idx int) {
 			defer w.Done()
-			assertEqual(t, a.QueryValue(fmt.Sprintf("key%d", idx)), fmt.Sprintf("val%d", idx))
+			assertEqual(t, a.WaitTaskValue(fmt.Sprintf("key%d", idx)), fmt.Sprintf("val%d", idx))
 		}(i)
 	}
 	w.Wait()
@@ -99,7 +101,7 @@ func TestWorker(t *testing.T) {
 			go func(idx int) {
 				defer w.Done()
 				key := fmt.Sprintf("key%d", idx)
-				assertEqual(t, a.QueryValue(key), fmt.Sprintf("val%d", idx))
+				assertEqual(t, a.WaitTaskValue(key), fmt.Sprintf("val%d", idx))
 				assertDuration(t, time.Since(now), wants[key])
 			}(i)
 			time.Sleep(delayTime)
@@ -160,14 +162,14 @@ func TestUnlimitWait(t *testing.T) {
 		t.Parallel()
 		max := 2
 		_, fn := setupTestData(0, max)
-		a, _ := New(fn, -1, 3).Run()
+		a, _ := New(fn, NeverFlushTimeout, 3).Run()
 		var w sync.WaitGroup
 		w.Add(max)
 		for i := 1; i <= max; i++ {
 			go func(idx int) {
 				defer w.Done()
 				select {
-				case <-a.QueryChan(fmt.Sprintf("key%d", idx)):
+				case <-a.Task(fmt.Sprintf("key%d", idx)).Done():
 					t.Error("expect not return value")
 				case <-time.After(100 * time.Millisecond):
 					break
@@ -181,15 +183,16 @@ func TestUnlimitWait(t *testing.T) {
 		t.Parallel()
 		max := 2
 		_, fn := setupTestData(0, max)
-		a, _ := New(fn, -1, 2).Run()
+		a, _ := New(fn, NeverFlushTimeout, 2).Run()
 		var w sync.WaitGroup
 		w.Add(max)
 		for i := 1; i <= max; i++ {
 			go func(idx int) {
 				defer w.Done()
+				task := a.Task(fmt.Sprintf("key%d", idx))
 				select {
-				case v := <-a.QueryChan(fmt.Sprintf("key%d", idx)):
-					assertEqual(t, v.Value, fmt.Sprintf("val%d", idx))
+				case <-task.Done():
+					assertEqual(t, task.ResultValue(), fmt.Sprintf("val%d", idx))
 					break
 				case <-time.After(100 * time.Millisecond):
 					t.Error("expect flush by max query")
@@ -214,7 +217,7 @@ func TestUnlimitMax(t *testing.T) {
 	for i := 1; i <= max; i++ {
 		go func(idx int) {
 			defer w.Done()
-			assertEqual(t, a.QueryValue(fmt.Sprintf("key%d", idx)), fmt.Sprintf("val%d", idx))
+			assertEqual(t, a.WaitTaskValue(fmt.Sprintf("key%d", idx)), fmt.Sprintf("val%d", idx))
 			assertDuration(t, time.Since(now), flushTimeout)
 		}(i)
 	}
@@ -225,7 +228,7 @@ func canTestConcurrent(concurrent int) bool {
 	return runtime.GOMAXPROCS(0) >= concurrent && runtime.NumCPU() >= concurrent
 }
 
-func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func(ids []Task[string, string]) error) {
+func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func(ids []Task[string, string])) {
 	// generate sample db
 	var db sync.Map
 	for i := 1; i <= dbItemsCount; i++ {
@@ -233,17 +236,15 @@ func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func
 	}
 
 	// generate fn
-	fn := func(ids []Task[string, string]) error {
+	fn := func(ids []Task[string, string]) {
 		if fakeDuration > 0 {
 			time.Sleep(fakeDuration)
 		}
 		for _, id := range ids {
 			if r, ok := db.Load(id.Value()); ok {
-				id.Return(r.(string))
-				// TODO: fix pointer
+				id.Return(r.(string), nil)
 			}
 		}
-		return nil
 	}
 	return db, fn
 }
