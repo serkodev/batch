@@ -1,7 +1,12 @@
 package batch
 
+import (
+	"sync"
+)
+
 type Task[T, R any] interface {
 	Value() T
+	Set(R, error)
 	Return(R, error)
 
 	finish()
@@ -21,9 +26,10 @@ type task[T, R any] struct {
 	ch    chan struct{}
 
 	// result
-	returned bool
-	result   R
-	err      error
+	result     R
+	err        error
+	isSet      bool
+	returnOnce sync.Once
 }
 
 func newTask[T any, R any](value T) Task[T, R] {
@@ -37,19 +43,26 @@ func (t *task[T, R]) Value() T {
 	return t.value
 }
 
-func (t *task[T, R]) Return(r R, err error) {
-	t.returned = true
+func (t *task[T, R]) Set(r R, err error) {
+	t.isSet = true
 	t.result = r
 	t.err = err
 }
 
+func (t *task[T, R]) Return(r R, err error) {
+	t.Set(r, err)
+	t.finish()
+}
+
 func (t *task[T, R]) finish() {
-	t.ch <- struct{}{}
-	close(t.ch)
+	t.returnOnce.Do(func() {
+		t.ch <- struct{}{}
+		close(t.ch)
+	})
 }
 
 func (t *task[T, R]) IsNoResult() bool {
-	return !t.returned
+	return !t.isSet
 }
 
 func (t *task[T, R]) Result() (R, error) {

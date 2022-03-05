@@ -67,7 +67,7 @@ func TestAsync(t *testing.T) {
 
 	max := 3
 	_, fn := setupTestData(0, max)
-	a, _ := New(func(ids []Task[string, string]) {
+	a, _ := New(func(ids TaskList[string, string]) {
 		var keys []string
 		for _, t := range ids {
 			keys = append(keys, t.Value())
@@ -224,11 +224,37 @@ func TestUnlimitMax(t *testing.T) {
 	w.Wait()
 }
 
+func TestAggregate(t *testing.T) {
+	t.Parallel()
+
+	a, _ := New(func(ids TaskList[string, string]) {
+		assertEqual(t, len(ids), 9)
+
+		m := ids.Group()
+		m["key1"].Return("val1", nil)
+		m["key2"].Return("val2", nil)
+		m["key3"].Return("val3", nil)
+	}, 100*time.Millisecond, 100).Run()
+
+	max := 3
+	var w sync.WaitGroup
+	for i := 1; i <= max; i++ {
+		for j := 0; j < max; j++ {
+			w.Add(1)
+			go func(idx int) {
+				defer w.Done()
+				assertEqual(t, a.WaitTaskValue(fmt.Sprintf("key%d", idx)), fmt.Sprintf("val%d", idx))
+			}(i)
+		}
+	}
+	w.Wait()
+}
+
 func canTestConcurrent(concurrent int) bool {
 	return runtime.GOMAXPROCS(0) >= concurrent && runtime.NumCPU() >= concurrent
 }
 
-func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func(ids []Task[string, string])) {
+func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func(ids TaskList[string, string])) {
 	// generate sample db
 	var db sync.Map
 	for i := 1; i <= dbItemsCount; i++ {
@@ -236,7 +262,7 @@ func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func
 	}
 
 	// generate fn
-	fn := func(ids []Task[string, string]) {
+	fn := func(ids TaskList[string, string]) {
 		if fakeDuration > 0 {
 			time.Sleep(fakeDuration)
 		}

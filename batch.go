@@ -11,14 +11,14 @@ import (
 
 // Batch is the instance, it contains the flush and worker settings.
 // Create an instance of Batch, by using New()
-type Batch[T, R any] struct {
+type Batch[T comparable, R any] struct {
 	// Max waiting time of worker to flush tasks.
 	MaxWait time.Duration
 
 	// Max amount of tasks, the worker will flush after reaching it.
 	MaxSize int
 
-	fn     func([]Task[T, R])
+	fn     func(TaskList[T, R])
 	ch     chan Task[T, R]
 	once   sync.Once
 	debugf func(format string, v ...interface{})
@@ -33,7 +33,7 @@ var NeverFlushTimeout time.Duration = -1
 // NeverFlushTimeout then the aggregator will never flush with timeout.
 // The flushMaxSize variable sets the maximum size of task.
 // If the flushMaxSize <= 0, the aggregator will never flush with amount of tasks.
-func New[T, R any](fn func([]Task[T, R]), flushMaxWait time.Duration, flushMaxSize int) *Batch[T, R] {
+func New[T comparable, R any](fn func(TaskList[T, R]), flushMaxWait time.Duration, flushMaxSize int) *Batch[T, R] {
 	a := &Batch[T, R]{
 		MaxWait: flushMaxWait,
 		MaxSize: flushMaxSize,
