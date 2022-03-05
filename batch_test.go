@@ -70,7 +70,7 @@ func TestAsync(t *testing.T) {
 	a, _ := New(func(ids TaskList[string, string]) {
 		var keys []string
 		for _, t := range ids {
-			keys = append(keys, t.Value())
+			keys = append(keys, t.Get())
 		}
 		sort.Strings(keys)
 		assertEqual(t, reflect.DeepEqual(keys, []string{"key1", "key2", "key3"}), true)
@@ -267,7 +267,7 @@ func setupTestData(fakeDuration time.Duration, dbItemsCount int) (sync.Map, func
 			time.Sleep(fakeDuration)
 		}
 		for _, id := range ids {
-			if r, ok := db.Load(id.Value()); ok {
+			if r, ok := db.Load(id.Get()); ok {
 				id.Return(r.(string), nil)
 			}
 		}

@@ -17,7 +17,7 @@ func (list TaskList[T, R]) Return(r R, err error) {
 func (list TaskList[T, R]) Group() TaskMap[T, R] {
 	m := make(TaskMap[T, R])
 	for _, t := range list {
-		k := t.Value()
+		k := t.Get()
 		m[k] = append(m[k], t)
 	}
 	return m

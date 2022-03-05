@@ -5,7 +5,7 @@ import (
 )
 
 type Task[T, R any] interface {
-	Value() T
+	Get() T
 	Set(R, error)
 	Return(R, error)
 
@@ -39,7 +39,7 @@ func newTask[T any, R any](value T) Task[T, R] {
 	}
 }
 
-func (t *task[T, R]) Value() T {
+func (t *task[T, R]) Get() T {
 	return t.value
 }
 
