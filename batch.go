@@ -19,7 +19,7 @@ type Batch[T comparable, R any] struct {
 	MaxSize int
 
 	fn     func(TaskList[T, R])
-	ch     chan Task[T, R]
+	ch     chan TaskInput[T, R]
 	once   sync.Once
 	debugf func(format string, v ...interface{})
 }
@@ -38,7 +38,7 @@ func New[T comparable, R any](fn func(TaskList[T, R]), flushMaxWait time.Duratio
 		MaxWait: flushMaxWait,
 		MaxSize: flushMaxSize,
 		fn:      fn,
-		ch:      make(chan Task[T, R]),
+		ch:      make(chan TaskInput[T, R]),
 		debugf:  func(format string, v ...interface{}) {},
 	}
 	return a
@@ -71,7 +71,7 @@ func (a *Batch[T, R]) run(workers int) {
 	if workers < 1 {
 		workers = 1
 	}
-	flushChan := make(chan []Task[T, R], workers)
+	flushChan := make(chan []TaskInput[T, R], workers)
 	for i := 0; i < workers; i++ {
 		go a.runWorker(flushChan)
 	}
@@ -83,7 +83,7 @@ func (a *Batch[T, R]) run(workers int) {
 		task := <-a.ch
 
 		a.debugf("[task] start")
-		tasks := []Task[T, R]{task}
+		tasks := []TaskInput[T, R]{task}
 
 		// stop timer
 		if !timer.Stop() {
@@ -131,48 +131,48 @@ func (a *Batch[T, R]) run(workers int) {
 	}
 }
 
-func (a *Batch[T, R]) runWorker(flushChan <-chan []Task[T, R]) {
+func (a *Batch[T, R]) runWorker(flushChan <-chan []TaskInput[T, R]) {
 	for tasks := range flushChan {
 		// execute
 		a.fn(tasks)
 
 		// return results
-		for _, task := range tasks {
-			task.finish()
-		}
+		// TODO
+		// for _, task := range tasks {
+		// 	task.finish()
+		// }
 	}
 }
 
 // Get with a key and return with a Result[R] channel.
-func (a *Batch[T, R]) Task(item T) Result[T, R] {
+func (a *Batch[T, R]) Task(item T) TaskOutput[R] {
 	t := newTask[T, R](item)
 	a.ch <- t
-	return t.(Result[T, R])
+	return t.(TaskOutput[R])
 }
 
 // Get with a key and return with a Result[R] synchronously.
 // It is a shortcut for <-GetChan(key)
-func (a *Batch[T, R]) WaitTask(item T) Result[T, R] {
+func (a *Batch[T, R]) WaitTask(item T) Result[R] {
 	t := a.Task(item)
-	t.Wait()
-	return t
+	return t.Wait()
 }
 
 // Get with a key and return with Value and Error of Result[R] synchronously.
 // It is a shortcut for Get(key).Get()
 func (a *Batch[T, R]) WaitTaskResult(item T) (R, error) {
-	return a.WaitTask(item).Result()
+	return a.WaitTask(item).Get()
 }
 
 // Get with a key and return with Value Result[R] synchronously.
 // It is a shortcut for Get(key).Value
 func (a *Batch[T, R]) WaitTaskValue(item T) R {
-	return a.WaitTask(item).ResultValue()
+	return a.WaitTask(item).GetValue()
 }
 
 // Get with multiple keys and return a slice of Result[R] synchronously.
-func (a *Batch[T, R]) WaitMultiTask(items []T) []Result[T, R] {
-	output := make([]Result[T, R], len(items))
+func (a *Batch[T, R]) WaitMultiTask(items []T) []Result[R] {
+	output := make([]Result[R], len(items))
 	var w sync.WaitGroup
 	w.Add(len(items))
 	for i, key := range items {

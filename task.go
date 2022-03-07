@@ -1,41 +1,24 @@
 package batch
 
-import (
-	"sync"
-)
-
-type Task[T, R any] interface {
+type TaskInput[T, R any] interface {
 	Get() T
-	Set(R, error)
 	Return(R, error)
-
-	finish()
 }
 
-type Result[T, R any] interface {
-	Wait()
-	Done() <-chan struct{}
-
-	Result() (R, error)
-	ResultValue() R
-	IsNoResult() bool
+type TaskOutput[R any] interface {
+	Wait() Result[R]
+	Done() <-chan Result[R]
 }
 
 type task[T, R any] struct {
 	value T
-	ch    chan struct{}
-
-	// result
-	result     R
-	err        error
-	isSet      bool
-	returnOnce sync.Once
+	ch    chan Result[R]
 }
 
-func newTask[T any, R any](value T) Task[T, R] {
+func newTask[T any, R any](value T) TaskInput[T, R] {
 	return &task[T, R]{
 		value: value,
-		ch:    make(chan struct{}, 1),
+		ch:    make(chan Result[R], 1),
 	}
 }
 
@@ -43,41 +26,19 @@ func (t *task[T, R]) Get() T {
 	return t.value
 }
 
-func (t *task[T, R]) Set(r R, err error) {
-	t.isSet = true
-	t.result = r
-	t.err = err
-}
-
 func (t *task[T, R]) Return(r R, err error) {
-	t.Set(r, err)
-	t.finish()
+	if t.ch != nil {
+		t.ch <- Result[R]{r, err}
+		close(t.ch) // TODO: need close?
+	}
 }
 
-func (t *task[T, R]) finish() {
-	t.returnOnce.Do(func() {
-		t.ch <- struct{}{}
-		close(t.ch)
-	})
-}
-
-func (t *task[T, R]) IsNoResult() bool {
-	return !t.isSet
-}
-
-func (t *task[T, R]) Result() (R, error) {
-	return t.result, t.err
-}
-
-func (t *task[T, R]) ResultValue() R {
-	r, _ := t.Result()
-	return r
-}
-
-func (t *task[T, R]) Done() <-chan struct{} {
+func (t *task[T, R]) Done() <-chan Result[R] {
 	return t.ch
 }
 
-func (t *task[T, R]) Wait() {
-	<-t.Done()
+func (t *task[T, R]) Wait() Result[R] {
+	return <-t.Done()
 }
+
+// TODO: use sync.pool reuse task
