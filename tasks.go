@@ -3,9 +3,9 @@ package batch
 type TaskList[T comparable, R any] []TaskInput[T, R]
 
 func (list TaskList[T, R]) Values() []T {
-	vals := make([]T, 0, len(list))
-	for _, t := range list {
-		vals = append(vals, t.Value())
+	vals := make([]T, len(list))
+	for i, t := range list {
+		vals[i] = t.Value()
 	}
 	return vals
 }
@@ -26,6 +26,14 @@ func (list TaskList[T, R]) Group() TaskMap[T, R] {
 }
 
 type TaskMap[T comparable, R any] map[T]TaskList[T, R]
+
+func (m TaskMap[T, R]) Keys() []T {
+	keys := make([]T, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	return keys
+}
 
 func (m TaskMap[T, R]) Return(r R, err error) {
 	for _, list := range m {
