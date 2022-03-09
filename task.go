@@ -1,7 +1,7 @@
 package batch
 
 type TaskInput[T, R any] interface {
-	Get() T
+	Value() T
 	Return(R, error)
 }
 
