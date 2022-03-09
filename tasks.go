@@ -2,6 +2,14 @@ package batch
 
 type TaskList[T comparable, R any] []TaskInput[T, R]
 
+func (list TaskList[T, R]) Values() []T {
+	vals := make([]T, 0, len(list))
+	for _, t := range list {
+		vals = append(vals, t.Value())
+	}
+	return vals
+}
+
 func (list TaskList[T, R]) Return(r R, err error) {
 	for _, t := range list {
 		t.Return(r, err)
