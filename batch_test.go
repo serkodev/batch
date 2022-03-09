@@ -250,6 +250,32 @@ func TestAggregate(t *testing.T) {
 	w.Wait()
 }
 
+func TestFallback(t *testing.T) {
+	a2, _ := New(func(ids TaskList[string, string]) {
+		m := ids.Group()
+		m["key1"].Return("val1", nil)
+		m["key2"].Return("val2", nil)
+		m["key3"].Return("val3", nil)
+		m["key4"].Return("val4", nil)
+	}, 50*time.Millisecond, 10).Run()
+
+	a1, _ := New(func(ids TaskList[string, string]) {
+		m := ids.Group()
+		m["key1"].Return("val1", nil)
+		m["key2"].Return("val2", nil)
+		m["key3"].Return("val3", nil)
+
+		for _, id := range ids {
+			if id.Value() == "key4" {
+				id.Fallback(a2)
+			}
+		}
+	}, 50*time.Millisecond, 10).Run()
+
+	assertEqual(t, a1.WaitTaskValue("key1"), "val1")
+	assertEqual(t, a1.WaitTaskValue("key4"), "val4")
+}
+
 func canTestConcurrent(concurrent int) bool {
 	return runtime.GOMAXPROCS(0) >= concurrent && runtime.NumCPU() >= concurrent
 }

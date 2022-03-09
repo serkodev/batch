@@ -144,11 +144,15 @@ func (a *Batch[T, R]) runWorker(flushChan <-chan []TaskInput[T, R]) {
 	}
 }
 
-// Get with a key and return with a Result[R] channel.
-func (a *Batch[T, R]) Task(item T) TaskOutput[R] {
-	t := newTask[T, R](item)
+func (a *Batch[T, R]) taskWithChan(item T, ch chan Result[R]) TaskOutput[R] {
+	t := newTask(item, ch)
 	a.ch <- t
 	return t.(TaskOutput[R])
+}
+
+// Get with a key and return with a Result[R] channel.
+func (a *Batch[T, R]) Task(item T) TaskOutput[R] {
+	return a.taskWithChan(item, make(chan Result[R], 1))
 }
 
 // Get with a key and return with a Result[R] synchronously.
