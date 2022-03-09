@@ -275,6 +275,15 @@ func TestFallback(t *testing.T) {
 	assertEqual(t, a1.WaitTaskValue("key1"), "val1")
 	assertEqual(t, a1.WaitTaskValue("key4"), "val4")
 }
+func BenchmarkBatch(b *testing.B) {
+	a, _ := New(func(ids TaskList[int, string]) {
+		ids.Return("ok", nil)
+	}, NeverFlushTimeout, b.N).Run()
+	for i := 0; i < b.N-1; i++ {
+		a.Task(i)
+	}
+	a.Task(b.N).Wait()
+}
 
 func canTestConcurrent(concurrent int) bool {
 	return runtime.GOMAXPROCS(0) >= concurrent && runtime.NumCPU() >= concurrent
