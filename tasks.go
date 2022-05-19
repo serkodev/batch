@@ -16,6 +16,12 @@ func (list TaskList[T, R]) Return(r R, err error) {
 	}
 }
 
+func (list TaskList[T, R]) Fallback(batch *Batch[T, R]) {
+	for _, t := range list {
+		t.Fallback(batch)
+	}
+}
+
 func (list TaskList[T, R]) Group() TaskMap[T, R] {
 	m := make(TaskMap[T, R])
 	for _, t := range list {

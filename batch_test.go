@@ -264,12 +264,7 @@ func TestFallback(t *testing.T) {
 		m["key1"].Return("val1", nil)
 		m["key2"].Return("val2", nil)
 		m["key3"].Return("val3", nil)
-
-		for _, id := range ids {
-			if id.Value() == "key4" {
-				id.Fallback(a2)
-			}
-		}
+		m["key4"].Fallback(a2)
 	}, 50*time.Millisecond, 10).Run()
 
 	assertEqual(t, a1.WaitTaskValue("key1"), "val1")
