@@ -32,7 +32,7 @@ func TestSync(t *testing.T) {
 	// test sync query
 	assertEqual(t, a.WaitTaskValue("key1"), "val1")
 	assertEqual(t, a.WaitTaskValue("key2"), "val2")
-	// assertEqual(t, a.WaitTask("key3").IsNoResult(), true) // TODO: expect no result
+	assertEqual(t, a.WaitTask("key3").IsNoResult(), true)
 
 	// insert data
 	db.Store("key3", "val3")
@@ -274,6 +274,16 @@ func TestFallback(t *testing.T) {
 
 	assertEqual(t, a1.WaitTaskValue("key1"), "val1")
 	assertEqual(t, a1.WaitTaskValue("key4"), "val4")
+}
+
+func TestUnreturn(t *testing.T) {
+	a, _ := New(func(ids TaskList[string, string]) {
+	}, 50*time.Millisecond, 10).Run()
+
+	r := a.WaitTask("key1")
+	assertEqual(t, r.Value, "")
+	assertEqual(t, r.Error.Error(), ErrNoResult.Error())
+	assertEqual(t, r.IsNoResult(), true)
 }
 
 func canTestConcurrent(concurrent int) bool {

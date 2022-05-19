@@ -4,6 +4,7 @@ type TaskInput[T comparable, R any] interface {
 	Value() T
 	Return(R, error)
 	Fallback(*Batch[T, R])
+	returned() bool
 }
 
 type TaskOutput[R any] interface {
@@ -14,6 +15,7 @@ type TaskOutput[R any] interface {
 type task[T comparable, R any] struct {
 	value T
 	ch    chan Result[R]
+	rt    bool
 }
 
 func newTask[T comparable, R any](value T, ch chan Result[R]) TaskInput[T, R] {
@@ -28,12 +30,22 @@ func (t *task[T, R]) Value() T {
 }
 
 func (t *task[T, R]) Return(r R, err error) {
-	t.ch <- Result[R]{r, err}
-	close(t.ch)
+	if !t.rt {
+		t.rt = true
+		t.ch <- Result[R]{r, err}
+		close(t.ch)
+	}
 }
 
 func (t *task[T, R]) Fallback(batch *Batch[T, R]) {
-	batch.taskWithChan(t.value, t.ch)
+	if !t.rt {
+		t.rt = true
+		batch.taskWithChan(t.value, t.ch)
+	}
+}
+
+func (t *task[T, R]) returned() bool {
+	return t.rt
 }
 
 func (t *task[T, R]) Done() <-chan Result[R] {

@@ -28,6 +28,9 @@ type Batch[T comparable, R any] struct {
 // will never flush with timeout.
 var NeverFlushTimeout time.Duration = -1
 
+// unreturned error
+var ErrNoResult = errors.New("unreturned value")
+
 // New creates a new Aggregator. The flushMaxWait variable
 // sets the maximum timeout of flushing. If flushMaxWait equals to
 // NeverFlushTimeout then the aggregator will never flush with timeout.
@@ -136,11 +139,13 @@ func (a *Batch[T, R]) runWorker(flushChan <-chan []TaskInput[T, R]) {
 		// execute
 		a.fn(tasks)
 
-		// return results
-		// TODO
-		// for _, task := range tasks {
-		// 	task.finish()
-		// }
+		// return results if not unreturned
+		for _, task := range tasks {
+			if !task.returned() {
+				var zero R
+				task.Return(zero, ErrNoResult)
+			}
+		}
 	}
 }
 

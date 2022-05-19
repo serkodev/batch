@@ -13,3 +13,7 @@ func (r Result[R]) GetValue() R {
 	v, _ := r.Get()
 	return v
 }
+
+func (r Result[R]) IsNoResult() bool {
+	return r.Error == ErrNoResult
+}
